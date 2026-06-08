@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
           latitude:  centerLat,
           longitude: centerLon,
         },
-        session.classroom.radiusMeters
+        200 // Expanded to 200m to account for laptop Wi-Fi GPS drift
       );
       lock2GpsPassed  = geoResult.withinFence;
       distanceMeters  = geoResult.distanceMeters;
