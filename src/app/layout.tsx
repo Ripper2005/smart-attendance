@@ -2,18 +2,25 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SmartAttend — Anti-Proxy Attendance System",
-  description:
-    "Foolproof university attendance with Triple-Lock security: Dynamic QR codes, GPS geofencing, and biometric verification.",
+  title: "Smart Attendance",
+  description: "Triple-Lock Anti-Proxy Attendance System",
   manifest: "/manifest.json",
-  keywords: ["attendance", "anti-proxy", "university", "QR code", "biometric", "geofencing"],
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "SmartAttend",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6C63FF",
+  themeColor: "#0A0A0F",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1, // Prevents accidental zoom on mobile scan UI
+  maximumScale: 1,
+  userScalable: false, // Prevents zooming when scanning QR
 };
 
 export default function RootLayout({
