@@ -201,11 +201,14 @@ export async function POST(req: NextRequest) {
 
     // GPS check using Haversine formula
     if (latitude != null && longitude != null) {
+      const centerLat = session.dynamicLatitude ? Number(session.dynamicLatitude) : Number(session.classroom.latitude);
+      const centerLon = session.dynamicLongitude ? Number(session.dynamicLongitude) : Number(session.classroom.longitude);
+
       const geoResult = isWithinGeofence(
         { latitude, longitude },
         {
-          latitude:  Number(session.classroom.latitude),
-          longitude: Number(session.classroom.longitude),
+          latitude:  centerLat,
+          longitude: centerLon,
         },
         session.classroom.radiusMeters
       );

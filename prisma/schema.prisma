@@ -139,6 +139,8 @@ model ClassSession {
   startedAt   DateTime?     // When faculty clicked "Start"
   endedAt     DateTime?     // When faculty clicked "Stop"
   scheduledEndAt DateTime?  // Auto-expire the session at this time
+  dynamicLatitude  Decimal? @db.Decimal(10, 8)
+  dynamicLongitude Decimal? @db.Decimal(11, 8)
   createdAt   DateTime      @default(now())
 
   course    Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)

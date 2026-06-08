@@ -23,6 +23,8 @@ interface SessionInfo {
   startedAt: string | null;
   endedAt: string | null;
   scheduledEndAt: string | null;
+  dynamicLatitude: number | null;
+  dynamicLongitude: number | null;
 }
 
 interface RosterEntry {
@@ -80,6 +82,8 @@ export default function LiveSessionPage() {
   const [qrSrc, setQrSrc]          = useState(`/api/faculty/sessions/${id}/qr?t=0`);
   const [countdown, setCountdown]   = useState(5);
   const [stopping, setStopping]     = useState(false);
+  const [starting, setStarting]     = useState(false);
+  const [isAcquiringGps, setIsAcquiringGps] = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
   // Override panel state
@@ -130,6 +134,57 @@ export default function LiveSessionPage() {
     const pollInterval = setInterval(() => { fetchData(); }, 10000);
     return () => clearInterval(pollInterval);
   }, [fetchData]);
+
+  // ── Start session ───────────────────────────────────────
+  async function handleStart() {
+    setIsAcquiringGps(true);
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error("Timeout (5000ms reached)"));
+        }, 5000);
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(timeoutId);
+            resolve(pos);
+          },
+          (err) => {
+            clearTimeout(timeoutId);
+            reject(err);
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      });
+      latitude = position.coords.latitude;
+      longitude = position.coords.longitude;
+    } catch (err) {
+      console.warn("GPS acquisition failed:", err);
+      alert("GPS failed, falling back to static classroom coordinates");
+    } finally {
+      setIsAcquiringGps(false);
+    }
+
+    setStarting(true);
+    const res = await fetch(`/api/faculty/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({
+        action: "start",
+        latitude,
+        longitude,
+      }),
+    });
+    setStarting(false);
+    if (res.ok) {
+      fetchData();
+    } else {
+      setError("Failed to start session.");
+    }
+  }
 
   // ── Stop session ───────────────────────────────────────
   async function handleStop() {
@@ -252,6 +307,24 @@ export default function LiveSessionPage() {
           <button onClick={handleExport} className="btn btn-secondary btn-sm">
             ⬇ Export CSV
           </button>
+          {!isActive && session?.status === "SCHEDULED" && (
+            <button
+              onClick={handleStart}
+              className="btn btn-primary btn-sm"
+              disabled={starting || isAcquiringGps}
+            >
+              {isAcquiringGps ? (
+                <>
+                  <span className="spinner" />
+                  Acquiring GPS...
+                </>
+              ) : starting ? (
+                <span className="spinner" />
+              ) : (
+                "▶ Start Session"
+              )}
+            </button>
+          )}
           {isActive && (
             <button onClick={handleStop} className="btn btn-danger" disabled={stopping}>
               {stopping ? <span className="spinner" /> : "■ Stop Session"}
@@ -284,9 +357,31 @@ export default function LiveSessionPage() {
                 width: "100%", aspectRatio: "1", borderRadius: 12,
                 background: "rgba(107,114,128,0.1)", display: "flex",
                 alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12,
+                padding: 24,
               }}>
                 <span style={{ fontSize: "3rem" }}>🔒</span>
-                <span className="text-muted" style={{ fontSize: "0.85rem" }}>Session not active</span>
+                <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                  {session?.status === "SCHEDULED" ? "Session is scheduled." : "Session not active"}
+                </span>
+                {session?.status === "SCHEDULED" && (
+                  <button
+                    onClick={handleStart}
+                    className="btn btn-primary"
+                    disabled={starting || isAcquiringGps}
+                    style={{ marginTop: 12 }}
+                  >
+                    {isAcquiringGps ? (
+                      <>
+                        <span className="spinner" style={{ marginRight: 6 }} />
+                        Acquiring GPS...
+                      </>
+                    ) : starting ? (
+                      <span className="spinner" />
+                    ) : (
+                      "▶ Start Live Session"
+                    )}
+                  </button>
+                )}
               </div>
             )}
           </div>

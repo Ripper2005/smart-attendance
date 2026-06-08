@@ -159,13 +159,9 @@ function SessionsContent() {
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {s.status === "SCHEDULED" && (
-                  <button
-                    onClick={() => handleAction(s.id, "start")}
-                    className="btn btn-primary btn-sm"
-                    disabled={actionLoading === s.id}
-                  >
-                    {actionLoading === s.id ? <span className="spinner" /> : "▶ Start"}
-                  </button>
+                  <Link href={`/faculty/sessions/${s.id}/live`} className="btn btn-primary btn-sm" style={{ textDecoration: "none" }}>
+                    ▶ Start
+                  </Link>
                 )}
                 {s.status === "ACTIVE" && (
                   <>

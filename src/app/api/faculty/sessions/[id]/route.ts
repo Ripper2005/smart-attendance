@@ -85,6 +85,8 @@ export async function GET(
         startedAt: session.startedAt?.toISOString() ?? null,
         endedAt: session.endedAt?.toISOString() ?? null,
         scheduledEndAt: session.scheduledEndAt?.toISOString() ?? null,
+        dynamicLatitude: session.dynamicLatitude ? Number(session.dynamicLatitude) : null,
+        dynamicLongitude: session.dynamicLongitude ? Number(session.dynamicLongitude) : null,
         // otpSecret is deliberately NOT included
       },
       roster,
@@ -108,7 +110,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
-    const { action } = body;
+    const { action, latitude, longitude } = body;
 
     if (!["start", "stop"].includes(action)) {
       return NextResponse.json({ error: "action must be 'start' or 'stop'." }, { status: 400 });
@@ -129,7 +131,12 @@ export async function PATCH(
       where: { id },
       data:
         action === "start"
-          ? { status: "ACTIVE", startedAt: new Date() }
+          ? {
+              status: "ACTIVE",
+              startedAt: new Date(),
+              dynamicLatitude: latitude !== undefined && latitude !== null ? Number(latitude) : null,
+              dynamicLongitude: longitude !== undefined && longitude !== null ? Number(longitude) : null,
+            }
           : { status: "COMPLETED", endedAt: new Date() },
     });
 
