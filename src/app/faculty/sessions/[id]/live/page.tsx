@@ -144,8 +144,8 @@ export default function LiveSessionPage() {
     try {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         const timeoutId = setTimeout(() => {
-          reject(new Error("Timeout (5000ms reached)"));
-        }, 5000);
+          reject(new Error("Timeout (15000ms reached)"));
+        }, 15000);
 
         navigator.geolocation.getCurrentPosition(
           (pos) => {
@@ -156,7 +156,7 @@ export default function LiveSessionPage() {
             clearTimeout(timeoutId);
             reject(err);
           },
-          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
       });
       latitude = position.coords.latitude;
