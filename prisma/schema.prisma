@@ -1,0 +1,188 @@
+// Smart Attendance & Anti-Proxy System - Prisma Schema
+// Database: PostgreSQL via Supabase or local Docker
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  FACULTY
+  STUDENT
+}
+
+enum SessionStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  OVERRIDE // Manually marked by faculty
+}
+
+// ─────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  fullName         String
+  role             Role
+  studentRegNumber String?  @unique // Only for STUDENT role
+  avatarUrl        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  coursesTaught  Course[]             @relation("FacultyCourses")
+  enrollments    CourseEnrollment[]
+  attendanceLogs AttendanceLog[]
+  authenticators UserAuthenticator[]  // WebAuthn FIDO2 credentials
+  overriddenLogs AttendanceLog[]      @relation("FacultyOverrides")
+
+  @@map("users")
+}
+
+// WebAuthn / FIDO2 Credentials — one per registered device
+model UserAuthenticator {
+  id           String   @id @default(uuid())
+  userId       String
+  credentialId String   @unique  // base64url encoded credential ID
+  publicKey    Bytes              // COSE-encoded public key
+  counter      BigInt   @default(0) // monotonic counter prevents replay attacks
+  deviceType   String             // "singleDevice" | "multiDevice"
+  backedUp     Boolean  @default(false)
+  transports   String[]           // ["internal", "usb", "nfc", "ble", "hybrid"]
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_authenticators")
+}
+
+// ─────────────────────────────────────────────────────────────
+// COURSES & ENROLLMENTS
+// ─────────────────────────────────────────────────────────────
+
+model Course {
+  id         String   @id @default(uuid())
+  courseCode String   @unique  // e.g. "CS-401"
+  courseName String
+  facultyId  String
+  semester   String?           // e.g. "2025-B"
+  createdAt  DateTime @default(now())
+
+  faculty     User               @relation("FacultyCourses", fields: [facultyId], references: [id])
+  enrollments CourseEnrollment[]
+  sessions    ClassSession[]
+
+  @@map("courses")
+}
+
+model CourseEnrollment {
+  id         String   @id @default(uuid())
+  courseId   String
+  studentId  String
+  enrolledAt DateTime @default(now())
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@map("course_enrollments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CLASSROOMS
+// ─────────────────────────────────────────────────────────────
+
+model Classroom {
+  id           String  @id @default(uuid())
+  name         String  // e.g. "L-202", "Seminar Hall A"
+  building     String?
+  latitude     Decimal @db.Decimal(10, 8) // Precision for ~1mm resolution
+  longitude    Decimal @db.Decimal(11, 8)
+  radiusMeters Int     @default(10) // Geofence radius
+  wifiSsid     String? // Expected campus Wi-Fi SSID
+  campusPublicIp String? // Campus gateway public IP for fallback verification
+
+  sessions ClassSession[]
+
+  @@map("classrooms")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SESSIONS
+// ─────────────────────────────────────────────────────────────
+
+model ClassSession {
+  id          String        @id @default(uuid())
+  courseId    String
+  classroomId String
+  otpSecret   String        // TOTP secret (never exposed to client)
+  status      SessionStatus @default(SCHEDULED)
+  startedAt   DateTime?     // When faculty clicked "Start"
+  endedAt     DateTime?     // When faculty clicked "Stop"
+  scheduledEndAt DateTime?  // Auto-expire the session at this time
+  createdAt   DateTime      @default(now())
+
+  course    Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  classroom Classroom     @relation(fields: [classroomId], references: [id])
+  attendance AttendanceLog[]
+
+  @@map("class_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ATTENDANCE LOGS
+// ─────────────────────────────────────────────────────────────
+
+model AttendanceLog {
+  id        String           @id @default(uuid())
+  sessionId String
+  studentId String
+  status    AttendanceStatus @default(ABSENT)
+  verifiedAt DateTime?
+
+  // Triple-Lock verification metadata (stored for audit trails)
+  lock1TokenVerified    Boolean  @default(false) // Time lock passed?
+  lock2GpsPassed        Boolean  @default(false) // Location lock passed?
+  lock2WifiPassed       Boolean  @default(false) // Wi-Fi IP lock passed?
+  lock3BiometricVerified Boolean @default(false) // Identity lock passed?
+
+  // Geolocation data captured at time of scan
+  gpsLatitude    Decimal? @db.Decimal(10, 8)
+  gpsLongitude   Decimal? @db.Decimal(11, 8)
+  distanceMeters Decimal? @db.Decimal(8, 2) // Calculated server-side
+
+  // Network context (for Wi-Fi / IP verification)
+  clientIpAddress   String?
+  deviceFingerprint String? // Hash of User-Agent + screen props
+
+  // Faculty override data
+  overrideBy     String?  // Faculty userId who performed override
+  overrideReason String?
+  overriddenAt   DateTime?
+
+  session         ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student         User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  overrideFaculty User?        @relation("FacultyOverrides", fields: [overrideBy], references: [id])
+
+  @@unique([sessionId, studentId]) // One attendance record per student per session
+  @@map("attendance_logs")
+}
